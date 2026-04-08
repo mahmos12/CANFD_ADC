@@ -21,8 +21,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "ecg.h"
-#include "eeg.h"
 
 /* USER CODE END Includes */
 
@@ -52,50 +50,31 @@ FDCAN_HandleTypeDef hfdcan1;
 TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN PV */
-volatile uint32_t tx_ok = 0;
-volatile uint32_t tx_err = 0;
-
-volatile uint16_t debug_raw;
-
-#define ADC_BUFFER_SIZE 256
-__attribute__((aligned(32))) uint16_t adc_buffer[ADC_BUFFER_SIZE];
-
-uint8_t txData[64];
+uint16_t ADCbuffer[16];
 FDCAN_TxHeaderTypeDef txHeader;
-
-FDCAN_ProtocolStatusTypeDef g_status;
-FDCAN_ErrorCountersTypeDef g_err;
-
-volatile uint32_t g_lec = 0;
-volatile uint32_t g_txErr = 0;
-/*
-int16_t ecg_buffer[ECG_CHANNELS];
-int32_t eeg_buffer[EEG_CHANNELS];
-
-uint8_t txData[64];
-FDCAN_TxHeaderTypeDef txHeader;
-
-
-int sample_counter = 0;
-int tx_index = 0;*/
+volatile uint16_t decimation = 0;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MPU_Config(void);
-static void MX_DMA_Init(void);
 static void MX_GPIO_Init(void);
-static void MX_TIM6_Init(void);
-static void MX_ADC1_Init(void);
+static void MX_DMA_Init(void);
 static void MX_FDCAN1_Init(void);
+static void MX_ADC1_Init(void);
+static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#include <stdio.h>
+#include <string.h>
+#include "stm32h7xx_nucleo.h"
 
+extern UART_HandleTypeDef hcom_uart[COMn];
 /* USER CODE END 0 */
 
 /**
@@ -129,47 +108,35 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  MX_DMA_Init();
   MX_GPIO_Init();
-  MX_TIM6_Init();
-  MX_ADC1_Init();
+  MX_DMA_Init();
   MX_FDCAN1_Init();
+  MX_ADC1_Init();
+  MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&ADCbuffer, 16);
+  HAL_TIM_Base_Start(&htim6);
+ //uint8_t txData[16];
+ //static uint8_t idx = 0;
+ //static uint16_t samples[8];
+ //static uint8_t adc_idx = 0;
 
-HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, ADC_BUFFER_SIZE);
 
-  //ECG_Init();
-  //EEG_Init();
-  HAL_TIM_Base_Start_IT(&htim6);
+  //FDCAN_ProtocolStatusTypeDef status;
+  //uint32_t g_txFree;
+  //uint32_t g_txcount;
 
-
-  /*
-  FDCAN_ProtocolStatusTypeDef status;
-  uint32_t g_txFree;
-  uint32_t g_txcount;
-
-  FDCAN_TxHeaderTypeDef txHeader;
-  uint8_t txData[64] = {
-    0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
-    0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,
-    0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,
-    0x18,0x19,0x1A,0x1B,0x1C,0x1D,0x1E,0x1F,
-    0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,
-    0x28,0x29,0x2A,0x2B,0x2C,0x2D,0x2E,0x2F,
-    0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,
-    0x38,0x39,0x3A,0x3B,0x3C,0x3D,0x3E,0x3F
-  };*/
 
   /* Start FDCAN */
   HAL_FDCAN_Start(&hfdcan1);
 
   /* Konfigurera TX frame */
-  txHeader.Identifier = 0x100;
+  txHeader.Identifier = 0x102;
   txHeader.IdType = FDCAN_STANDARD_ID;
   txHeader.TxFrameType = FDCAN_DATA_FRAME;
   txHeader.DataLength = FDCAN_DLC_BYTES_16;
   txHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-  txHeader.BitRateSwitch = FDCAN_BRS_OFF;
+  txHeader.BitRateSwitch = FDCAN_BRS_ON;
   txHeader.FDFormat = FDCAN_FD_CAN;
   txHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
   txHeader.MessageMarker = 0;
@@ -198,53 +165,42 @@ HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, ADC_BUFFER_SIZE);
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
- while (1)
+  while (1){}
+  /*while (1)
   {
-	  HAL_FDCAN_GetProtocolStatus(&hfdcan1, &g_status);
-	  HAL_FDCAN_GetErrorCounters(&hfdcan1, &g_err);
+      // Läs nästa sample från DMA-buffer
+      uint16_t value = ADCbuffer[adc_idx];
+      adc_idx = (adc_idx + 1) % 16;
 
-	  g_lec   = g_status.LastErrorCode;
-	  g_txErr = g_err.TxErrorCnt;
+      // DEBUG (kan tas bort senare)
+      //char msg[20];
+      //sprintf(msg, "%u\r\n", value);
+      //HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
 
+      // samla 4 samples
+      samples[idx++] = value;
 
-      static uint16_t i = 0;
-
-      int idx = 0;
-
-      for (int k = 0; k < 8; k++)
+      if (idx == 8)
       {
-          uint16_t sample = adc_buffer[(i + k) % ADC_BUFFER_SIZE];
+          // packa till 8 bytes
+          for (int i = 0; i < 8; i++)
+          {
+              txData[2*i]   = samples[i] >> 8;
+              txData[2*i+1] = samples[i] & 0xFF;
+          }
 
-          txData[idx++] = sample & 0xFF;
-          txData[idx++] = (sample >> 8) & 0xFF;
+          // skicka CAN
+          if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) > 0)
+          {
+              HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, txData);
+          }
+
+          idx = 0;
+          HAL_Delay(250);
       }
 
-      i = (i + 8) % ADC_BUFFER_SIZE;
-
-      if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) > 0)
-      {
-          if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, txData) == HAL_OK)
-              tx_ok++;
-          else
-              tx_err++;
-      }
-
-      HAL_Delay(20);
-  }
-
-
-/*  while (1)
-  {
-	  HAL_FDCAN_GetProtocolStatus(&hfdcan1, &status);
-	  g_txFree = HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1);
-
-	  if (g_txFree > 0)
-	  {
-	      if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, txData) == HAL_OK)
-	      {
-	    	  g_txcount++;
-	      }
-	  }*/
+      //HAL_Delay(250);
+  }*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -338,11 +294,11 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
-  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
   hadc1.Init.NbrOfConversion = 1;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
-  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIG_T6_TRGO;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
   hadc1.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DMA_CIRCULAR;
   hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
   hadc1.Init.LeftBitShift = ADC_LEFTBITSHIFT_NONE;
@@ -367,7 +323,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_15;
   sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_64CYCLES_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_387CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
@@ -398,7 +354,7 @@ static void MX_FDCAN1_Init(void)
 
   /* USER CODE END FDCAN1_Init 1 */
   hfdcan1.Instance = FDCAN1;
-  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_NO_BRS;
+  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
   hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
   hfdcan1.Init.AutoRetransmission = ENABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
@@ -414,17 +370,17 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.MessageRAMOffset = 0;
   hfdcan1.Init.StdFiltersNbr = 1;
   hfdcan1.Init.ExtFiltersNbr = 0;
-  hfdcan1.Init.RxFifo0ElmtsNbr = 4;
-  hfdcan1.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_64;
+  hfdcan1.Init.RxFifo0ElmtsNbr = 8;
+  hfdcan1.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_16;
   hfdcan1.Init.RxFifo1ElmtsNbr = 0;
-  hfdcan1.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_64;
+  hfdcan1.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_16;
   hfdcan1.Init.RxBuffersNbr = 0;
-  hfdcan1.Init.RxBufferSize = FDCAN_DATA_BYTES_64;
+  hfdcan1.Init.RxBufferSize = FDCAN_DATA_BYTES_16;
   hfdcan1.Init.TxEventsNbr = 0;
   hfdcan1.Init.TxBuffersNbr = 0;
-  hfdcan1.Init.TxFifoQueueElmtsNbr = 4;
+  hfdcan1.Init.TxFifoQueueElmtsNbr = 8;
   hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-  hfdcan1.Init.TxElmtSize = FDCAN_DATA_BYTES_64;
+  hfdcan1.Init.TxElmtSize = FDCAN_DATA_BYTES_16;
   if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
   {
     Error_Handler();
@@ -453,15 +409,15 @@ static void MX_TIM6_Init(void)
 
   /* USER CODE END TIM6_Init 1 */
   htim6.Instance = TIM6;
-  htim6.Init.Prescaler = 468;
+  htim6.Init.Prescaler = 12500-1;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 99;
+  htim6.Init.Period = 2-1;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
     Error_Handler();
   }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
   {
@@ -503,7 +459,6 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -512,55 +467,30 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-
-
-
-/*void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+void process_and_send(uint16_t *data)
 {
-    if (htim->Instance == TIM6)
+    uint8_t txData[16];
+
+    for (int i = 0; i < 8; i++)
     {
-        if (tx_index + 13 <= 64)
-        {
-            ECG_GenerateSample(ecg_buffer);
-            EEG_GenerateSample(eeg_buffer);
+        txData[2*i]   = data[i] >> 8;
+        txData[2*i+1] = data[i] & 0xFF;
+    }
 
-            // ECG
-            for (int ch = 0; ch < ECG_CHANNELS; ch++)
-            {
-                txData[tx_index++] = ecg_buffer[ch] & 0xFF;
-                txData[tx_index++] = (ecg_buffer[ch] >> 8) & 0xFF;
-            }
-
-            // EEG
-            int32_t val = eeg_buffer[0];
-
-            txData[tx_index++] = val & 0xFF;
-            txData[tx_index++] = (val >> 8) & 0xFF;
-            txData[tx_index++] = (val >> 16) & 0xFF;
-
-            sample_counter++;
-        }
-
-        if (sample_counter >= 4)
-        {
-            for (int i = tx_index; i < 64; i++)
-            {
-                txData[i] = 0;
-            }
-
-            if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) > 0)
-            {
-                HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, txData);
-            }
-
-            tx_index = 0;
-            sample_counter = 0;
-        }
+    if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) > 0)
+    {
+        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, txData);
     }
 }
- /*
+void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc)
+{
+    process_and_send(&ADCbuffer[0]);   // första 8 samples
+}
 
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+    process_and_send(&ADCbuffer[8]);   // nästa 8 samples
+}
 
 /* USER CODE END 4 */
 

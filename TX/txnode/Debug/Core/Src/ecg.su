@@ -1,2 +1,0 @@
-../Core/Src/ecg.c:7:6:ECG_Init	4	static
-../Core/Src/ecg.c:12:6:ECG_GenerateSample	40	static

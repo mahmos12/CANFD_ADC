@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <string.h>
+#include "stm32h7xx_nucleo.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,13 +49,12 @@ FDCAN_HandleTypeDef hfdcan1;
 
 /* USER CODE BEGIN PV */
 FDCAN_RxHeaderTypeDef g_rxHeader;
-uint8_t g_rxData[64];
+uint8_t g_rxData[16];
 
 uint32_t g_rxId = 0;
 uint32_t g_fifoLevel = 0;
 uint32_t g_rxCount = 0;
 uint32_t g_lastError = 0;
-volatile uint16_t debug_raw;
 
 /* USER CODE END PV */
 
@@ -111,10 +112,10 @@ int main(void)
   /* Accept ALL standard IDs */
   sFilterConfig.IdType = FDCAN_STANDARD_ID;
   sFilterConfig.FilterIndex = 0;
-  sFilterConfig.FilterType = FDCAN_FILTER_RANGE;
+  sFilterConfig.FilterType = FDCAN_FILTER_MASK;
   sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
   sFilterConfig.FilterID1 = 0x000;
-  sFilterConfig.FilterID2 = 0x7FF;
+  sFilterConfig.FilterID2 = 0x000;
 
   /* Configure filter BEFORE start */
   HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig);
@@ -153,54 +154,43 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
+
   while (1)
   {
-      FDCAN_ProtocolStatusTypeDef status;
-      HAL_FDCAN_GetProtocolStatus(&hfdcan1, &status);
-
-      FDCAN_ErrorCountersTypeDef errCnt;
-      HAL_FDCAN_GetErrorCounters(&hfdcan1, &errCnt);
-
-      uint32_t lec   = status.LastErrorCode;
-      uint32_t rxErr = errCnt.RxErrorCnt;
-      uint32_t txErr = errCnt.TxErrorCnt;
-
       g_fifoLevel = HAL_FDCAN_GetRxFifoFillLevel(&hfdcan1, FDCAN_RX_FIFO0);
 
       if (g_fifoLevel > 0)
       {
-          if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &g_rxHeader, g_rxData) == HAL_OK)
-          {
-              g_rxId = g_rxHeader.Identifier;
-              g_rxCount++;
+    	  if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &g_rxHeader, g_rxData) == HAL_OK)
+    	  {
+    		  if (g_rxHeader.Identifier == 0x102)
+    		  {
+    		      if (g_rxHeader.DataLength == FDCAN_DLC_BYTES_16)
+    		      {
+    		          uint16_t samples[8];
 
-              volatile uint32_t dlc  = g_rxHeader.DataLength;
-              volatile uint32_t isFD = g_rxHeader.FDFormat;
-              volatile uint32_t brs  = g_rxHeader.BitRateSwitch;
+    		          for (int i = 0; i < 8; i++)
+    		          {
+    		              samples[i] = (g_rxData[2*i] << 8) | g_rxData[2*i+1];
+    		          }
 
-              // 🔥 UNPACK DATA (32 samples)
-              uint16_t last_sample = 0;
+    		          char msg[120];
+    		          sprintf(msg, "%u %u %u %u %u %u %u %u\r\n",
+    		                  samples[0], samples[1], samples[2], samples[3],
+    		                  samples[4], samples[5], samples[6], samples[7]);
 
-              for (int k = 0; k < 8; k++)
-              {
-                  uint16_t sample =
-                      g_rxData[2*k] |
-                      (g_rxData[2*k + 1] << 8);
+    		          sprintf(msg, "ID:0x%03X %u %u %u %u %u %u %u %u\r\n",
+    		                  g_rxHeader.Identifier,
+    		                  samples[0], samples[1], samples[2], samples[3],
+    		                  samples[4], samples[5], samples[6], samples[7]);
 
-                  last_sample = sample;
-
-                  // 👉 sätt breakpoint här om du vill se alla värden
-                  // volatile uint16_t debug_sample = sample;
-              }
-
-              // 👉 denna kan du se i debuggern
-              debug_raw = last_sample;
-          }
-          else
-          {
-              g_lastError++;
-          }
+    		          HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+    		      }
+    		  }
+    	  }
       }
+
+      HAL_Delay(1);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -238,7 +228,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 4;
   RCC_OscInitStruct.PLL.PLLN = 12;
   RCC_OscInitStruct.PLL.PLLP = 1;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
+  RCC_OscInitStruct.PLL.PLLQ = 2;
   RCC_OscInitStruct.PLL.PLLR = 2;
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
@@ -283,7 +273,7 @@ static void MX_FDCAN1_Init(void)
 
   /* USER CODE END FDCAN1_Init 1 */
   hfdcan1.Instance = FDCAN1;
-  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_NO_BRS;
+  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
   hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
   hfdcan1.Init.AutoRetransmission = ENABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
@@ -299,17 +289,17 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.MessageRAMOffset = 0;
   hfdcan1.Init.StdFiltersNbr = 1;
   hfdcan1.Init.ExtFiltersNbr = 0;
-  hfdcan1.Init.RxFifo0ElmtsNbr = 4;
-  hfdcan1.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_64;
+  hfdcan1.Init.RxFifo0ElmtsNbr = 8;
+  hfdcan1.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_16;
   hfdcan1.Init.RxFifo1ElmtsNbr = 0;
-  hfdcan1.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_64;
+  hfdcan1.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_16;
   hfdcan1.Init.RxBuffersNbr = 0;
-  hfdcan1.Init.RxBufferSize = FDCAN_DATA_BYTES_64;
+  hfdcan1.Init.RxBufferSize = FDCAN_DATA_BYTES_16;
   hfdcan1.Init.TxEventsNbr = 0;
   hfdcan1.Init.TxBuffersNbr = 0;
   hfdcan1.Init.TxFifoQueueElmtsNbr = 0;
   hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-  hfdcan1.Init.TxElmtSize = FDCAN_DATA_BYTES_64;
+  hfdcan1.Init.TxElmtSize = FDCAN_DATA_BYTES_16;
   if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
   {
     Error_Handler();

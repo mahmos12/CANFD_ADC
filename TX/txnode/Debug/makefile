@@ -61,8 +61,8 @@ all: main-build
 main-build: txnode.elf secondary-outputs
 
 # Tool invocations
-txnode.elf txnode.map: $(OBJS) $(USER_OBJS) C:\CANProjekt\FDCANClassic\TX\txnode\STM32H723ZGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "txnode.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\CANProjekt\FDCANClassic\TX\txnode\STM32H723ZGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="txnode.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+txnode.elf txnode.map: $(OBJS) $(USER_OBJS) C:\CAN\FDCANClassic\TX\txnode\STM32H723ZGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "txnode.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\CAN\FDCANClassic\TX\txnode\STM32H723ZGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="txnode.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
