@@ -1,0 +1,2 @@
+../Core/Src/ecg.c:7:6:ECG_Init	1
+../Core/Src/ecg.c:12:6:ECG_GenerateSample	4

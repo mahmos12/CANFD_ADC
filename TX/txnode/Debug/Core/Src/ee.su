@@ -1,0 +1,2 @@
+../Core/Src/ee.c:9:6:EEG_Init	4	static
+../Core/Src/ee.c:14:6:EEG_GenerateSample	40	static
